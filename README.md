@@ -1,86 +1,28 @@
+# VideoJS DVR Controls
 
-[npm-icon]: https://nodei.co/npm/videojs-dvr.png?downloads=true&downloadRank=true&stars=true
+A DVR Plugin for Video.js
 
-[npm-link]: https://nodei.co/npm/videojs-dvr/
+## Overview
 
-# videojs-dvr
+A fork of: https://github.com/facundofernandez/videojs-dvr
 
-A Video.js plugin for Seekbar with DVR support.
+This plugin is a fork of videojs-dvr. It adds seeking support to video.js during a live stream.
 
-[![NPM][npm-icon]][npm-link]
+This plugin does not include any styling of the elements added to the player, so custom CSS needs to be added.
 
-![Scheme](ima2.png)
-
-## Table of Contents
-
-<!-- START doctoc generated TOC please keep comment here to allow auto update -->
-<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
-## Installation
-
-- [Installation](#installation)
-- [Usage](#usage)
-  - [`<script>` Tag](#script-tag)
-  - [Browserify/CommonJS](#browserifycommonjs)
-  - [RequireJS/AMD](#requirejsamd)
-- [License](#license)
-
-<!-- END doctoc generated TOC please keep comment here to allow auto update -->
 ## Installation
 
 ```sh
-npm install --save videojs-dvr
+npm install --save videojs-dvr-controls
 ```
 
 ## Usage
 
-To include videojs-dvr on your website or web application, use any of the following methods.
-
-### `<script>` Tag
-
-This is the simplest case. Get the script in whatever way you prefer and include the plugin _after_ you include [video.js][videojs], so that the `videojs` global is available.
-
-```html
-<script src="//path/to/video.min.js"></script>
-<script src="//path/to/videojs-dvr.min.js"></script>
-<script>
-  var player = videojs('my-video');
-
-  player.dvr();
-</script>
-```
-
-### Browserify/CommonJS
-
-When using with Browserify, install videojs-dvr via npm and `require` the plugin as you would any other module.
-
 ```js
-var videojs = require('video.js');
+import videojs from 'video.js';
+import 'videojs-dvr-controls';
 
-// The actual plugin function is exported by this module, but it is also
-// attached to the `Player.prototype`; so, there is no need to assign it
-// to a variable.
-require('videojs-dvr');
-
-var player = videojs('my-video');
+const player = videojs('video-player');
 
 player.dvr();
 ```
-
-### RequireJS/AMD
-
-When using with RequireJS (or another AMD library), get the script in whatever way you prefer and `require` the plugin as you normally would:
-
-```js
-require(['video.js', 'videojs-dvr'], function(videojs) {
-  var player = videojs('my-video');
-
-  player.dvr();
-});
-```
-
-## License
-
-MIT. Copyright (c) ffernandez &lt;ff.fernandez.facundo@gmail.com&gt;
-
-
-[videojs]: http://videojs.com/

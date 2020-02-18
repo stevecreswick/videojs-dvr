@@ -1,0 +1,5 @@
+dist
+docs
+test/dist
+test/karma.conf.js
+node_modules

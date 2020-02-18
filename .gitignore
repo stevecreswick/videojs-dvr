@@ -1,37 +1,9 @@
-# OS
-Thumbs.db
-ehthumbs.db
-Desktop.ini
+# OSX os files
 .DS_Store
-._*
+.DS_Store?
 
-# Editors
-*~
-*.swp
-*.tmproj
-*.tmproject
-*.sublime-*
-.idea/
-.project/
-.settings/
-.vscode/
-
-# Logs
-logs
-*.log
-npm-debug.log*
-
-# Dependency directories
-bower_components/
 node_modules/
 
-# Yeoman meta-data
-.yo-rc.json
+# Test
+tests/unitcoverage
 
-# Build-related directories
-dist/
-docs/api/
-test/dist/
-
-*.iml
-package-lock.json

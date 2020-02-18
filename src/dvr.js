@@ -1,20 +1,21 @@
 import document from 'global/document';
 import window from 'global/window';
 import videojs from 'video.js';
-import {version as VERSION} from '../package.json';
+import getUserAgent from './utils/user-agent';
 
-// Default options for the plugin.
-const defaults = {
-  startTime: 0,
-  timeLive: 60 * 60
+const userAgent = getUserAgent(window, document);
+const { isMobile } = userAgent;
+
+const DEFAULT_START_TIME = 0;
+const DEFAULT_TIME_LIVE = 60 * 60;
+
+const DEFAULT_DVR_OPTIONS = {
+  startTime: DEFAULT_START_TIME,
+  timeLive: DEFAULT_TIME_LIVE
 };
 
-let timeLive = 0;
-let customTime = defaults.timeLive;
-
-// Cross-compatibility for Video.js 5 and 6.
-const registerPlugin = videojs.registerPlugin || videojs.plugin;
-// const dom = videojs.dom || videojs;
+let timeLive = DEFAULT_START_TIME;
+let customTime = DEFAULT_TIME_LIVE;
 
 const Button = videojs.getComponent('Button');
 const Component = videojs.getComponent('Component');
@@ -24,20 +25,58 @@ const PlayProgressBar = ProgressControl.getComponent('PlayProgressBar');
 const MouseTimeDisplay = videojs.getComponent('MouseTimeDisplay');
 const LoadProgressBar = ProgressControl.getComponent('LoadProgressBar');
 
-LoadProgressBar.prototype.update = function (event) {
+// get the percent width of a time compared to the total end
+const percentify = function(time, end) {
+  const percent = time / end || 0;
 
+  return `${(percent >= 1 ? 1 : percent) * 100}%`;
+};
+
+/**
+ * Button to seek forward to the current time.
+ */
+class LiveButton extends Button {
+  /**
+   * Creates an instance of this class.
+   * @param {object<Player>} player The Video.js `Player` object that this class should be attached to.
+   * @param {object} options An object containing options for the button.
+   */
+  constructor(player, options) {
+    super(player, options);
+    this.el().innerHTML = '<span class="liveText">LIVE</span>';
+
+    if (!player.paused()) {
+      this.addClass('onair');
+    }
+  }
+
+  /**
+   * Builds the default DOM `className`.
+   * @returns {string} The DOM `className` for this object.
+   */
+  buildCSSClass() {
+    return `vjs-live-button ${super.buildCSSClass()}`;
+  }
+
+  /**
+   * Handles a button click.
+   * @param {EventTarget~Event} event The event that caused this function to be called.
+   */
+  handleClick() {
+    // takes event param
+    const currentTime = this.player_.seekable().end(0);
+
+    this.player_.currentTime(currentTime);
+    this.player_.play();
+  }
+}
+
+LoadProgressBar.prototype.update = function() {
+  // takes event param
   const buffered = this.player_.buffered();
   const duration = this.player_.duration();
   const bufferedEnd = this.player_.bufferedEnd();
   const children = this.partEls_;
-
-  // get the percent width of a time compared to the total end
-  const percentify = function (time, end) {
-
-    const percent = (time / end) || 0;
-
-    return ((percent >= 1 ? 1 : percent) * 100) + '%';
-  };
 
   // update the width of the progress bar
   if (percentify(bufferedEnd, duration) !== 0) {
@@ -62,7 +101,6 @@ LoadProgressBar.prototype.update = function (event) {
 
     if (percentify(end - start, bufferedEnd) !== 0) {
       part.style.width = percentify(end - start, bufferedEnd);
-
     }
   }
 
@@ -74,37 +112,24 @@ LoadProgressBar.prototype.update = function (event) {
   children.length = buffered.length;
 };
 
-SeekBar.prototype.update_ = function (currentTime, percent) {
-
+SeekBar.prototype.update_ = function(currentTime, percent) {
   const duration = this.player_.duration();
-  const time = (this.player_.scrubbing()) ?
-    this.player_.getCache().currentTime : this.player_.currentTime();
+  const time = this.player_.scrubbing() ? this.player_.getCache().currentTime : this.player_.currentTime();
 
-  // machine readable value of progress bar (percentage complete)
   this.el_.setAttribute('aria-valuenow', (percent * 100).toFixed(2));
 
-  // human readable value of progress bar (time complete)
-  /*
-  this.el_.setAttribute('aria-valuetext',
-    this.localize('progress bar timing: currentTime={1} duration={2}',
-      [formatTime(currentTime, duration),
-        formatTime(duration, duration)],
-      '{1} of {2}'));
-   */
-  // console.log(duration - time, duration);
   if (duration !== Number.POSITIVE_INFINITY) {
     this.el_.setAttribute('aria-valuetext', `-${videojs.formatTime(duration - time, duration)}`);
   }
+
   // Update the `PlayProgressBar`.
   this.bar.update(videojs.dom.getBoundingClientRect(this.el_), percent);
-
 };
 
-SeekBar.prototype.handleMouseMove = function (event) {
-
+SeekBar.prototype.handleMouseMove = function(event) {
   const calculate = 1 - this.calculateDistance(event);
 
-  let newTime2 = this.player_.seekable().end(0) - (calculate * customTime);
+  let newTime2 = this.player_.seekable().end(0) - calculate * customTime;
 
   // Don't let video end while scrubbing.
   if (newTime2 === this.player_.duration()) {
@@ -115,11 +140,9 @@ SeekBar.prototype.handleMouseMove = function (event) {
   this.player_.currentTime(newTime2);
 
   this.update();
-
 };
 
 PlayProgressBar.prototype.update = function update(seekBarRect, seekBarPoint) {
-
   const duration = this.player_.duration();
 
   // If there is an existing rAF ID, cancel it so we don't over-queue.
@@ -128,54 +151,41 @@ PlayProgressBar.prototype.update = function update(seekBarRect, seekBarPoint) {
   }
 
   this.rafId_ = this.requestAnimationFrame(() => {
-
-    const time = (this.player_.scrubbing()) ?
-      this.player_.getCache().currentTime : this.player_.currentTime();
+    const time = this.player_.scrubbing() ? this.player_.getCache().currentTime : this.player_.currentTime();
 
     const content = videojs.formatTime(duration - time, duration);
 
-    if (seekBarPoint !== 0 && duration !== Number.POSITIVE_INFINITY) {
+    // timeTooltip is not added on mobile devices
+    if (!isMobile && seekBarPoint !== 0 && duration !== Number.POSITIVE_INFINITY) {
       this.getChild('timeTooltip').update(seekBarRect, seekBarPoint, `-${content}`);
     }
   });
 };
 
 MouseTimeDisplay.prototype.update = function update(seekBarRect, seekBarPoint) {
-
   // If there is an existing rAF ID, cancel it so we don't over-queue.
   if (this.rafId_) {
     this.cancelAnimationFrame(this.rafId_);
   }
 
   this.rafId_ = this.requestAnimationFrame(() => {
-
-    const content2 = videojs.formatTime(customTime - (seekBarPoint * customTime), customTime);
+    const content2 = videojs.formatTime(customTime - seekBarPoint * customTime, customTime);
 
     this.el_.style.left = `${seekBarRect.width * seekBarPoint}px`;
 
-    if (seekBarPoint !== 0 && this.player_.duration() !== Number.POSITIVE_INFINITY) {
+    // timeTooltip is not added on mobile devices
+    if (!isMobile && seekBarPoint !== 0 && this.player_.duration() !== Number.POSITIVE_INFINITY) {
       this.getChild('timeTooltip').update(seekBarRect, seekBarPoint, `-${content2}`);
     }
-
   });
 };
 
 /**
- * Function to invoke when the player is ready.
- *
- * This is a great place for your plugin to initialize itself. When this
- * function is called, the player will have its DOM and child components
- * in place.
- *
- * @function onPlayerReady
- * @param    {Player} player
- *           A Video.js player object.
- *
- * @param    {Object} [options={}]
- *           A plain object containing options for the plugin.
+ * Initializes DVR when the player sends a ready event
+ * @param {object<Player>} player A Video.js player object.
+ * @param {object} options
  */
-const onPlayerReady = (player, options) => {
-
+const onPlayerReady = player => {
   player.addClass('vjs-dvr');
 
   player.controlBar.addClass('vjs-dvr-control-bar');
@@ -183,14 +193,16 @@ const onPlayerReady = (player, options) => {
   const Slider = player.controlBar.progressControl.seekBar.__proto__;
 
   Slider.__proto__.update = function update() {
-
     if (!this.el_) {
       return;
     }
 
     let progress;
 
-    progress = this.name_ === 'VolumeBar' ? this.getPercent() : (1 - (this.player_.duration() - this.player_.currentTime()) / customTime);
+    progress =
+      this.name_ === 'VolumeBar'
+        ? this.getPercent()
+        : 1 - (this.player_.duration() - this.player_.currentTime()) / customTime;
 
     const bar = this.bar;
 
@@ -199,10 +211,7 @@ const onPlayerReady = (player, options) => {
     }
 
     // Protect against no duration and other division issues
-    if (typeof progress !== 'number' ||
-      progress !== progress ||
-      progress < 0 ||
-      progress === Infinity) {
+    if (typeof progress !== 'number' || progress !== progress || progress < 0 || progress === Infinity) {
       progress = 0;
     }
 
@@ -211,7 +220,7 @@ const onPlayerReady = (player, options) => {
     }
 
     // Convert to a percentage for setting
-    const percentage = (progress * 100).toFixed(2) + '%';
+    const percentage = `${(progress * 100).toFixed(2)}%`;
     const style = bar.el().style;
 
     if (progress !== 0) {
@@ -223,7 +232,6 @@ const onPlayerReady = (player, options) => {
     }
 
     return progress;
-
   };
 
   if (player.controlBar.progressControl) {
@@ -232,21 +240,22 @@ const onPlayerReady = (player, options) => {
 
   player.controlBar.liveButton = player.controlBar.addChild('liveButton');
 
-  player.controlBar.el().insertBefore(
-    player.controlBar.liveButton.el(),
-    player.controlBar.progressControl.el()
-  );
+  player.controlBar.el().insertBefore(player.controlBar.liveButton.el(), player.controlBar.progressControl.el());
 };
 
-const onTimeUpdate = (player, e) => {
-
+/**
+ * Initializes DVR when the player sends a ready event
+ * @param {object<Player>} player A Video.js player object.
+ * @param {object} event
+ */
+const onTimeUpdate = player => {
   const time = player.seekable();
 
   if (!time || !time.length) {
     return;
   }
 
-  if ((time.end(0) - player.currentTime()) < 20) {
+  if (time.end(0) - player.currentTime() < 20) {
     player.controlBar.liveButton.addClass('onair');
   } else {
     player.controlBar.liveButton.removeClass('onair');
@@ -260,94 +269,25 @@ const onTimeUpdate = (player, e) => {
 };
 
 /**
- * A video.js plugin.
- *
- * In the plugin function, the value of `this` is a video.js `Player`
- * instance. You cannot rely on the player being in a "ready" state here,
- * depending on how the plugin is invoked. This may or may not be important
- * to you; if not, remove the wait for "ready"!
- *
- * @function dvr
- * @param    {Object} [options={}]
- *           An object of options left to the plugin author to define.
+ * Adds dvr capability to videojs player
+ * @param {object} options
  */
-const dvr = function (options) {
-
-  if (!options) {
-    options = defaults;
-  }
-
-  this.on('timeupdate', (e) => {
+const dvr = function(options = {}) {
+  this.on('timeupdate', e => {
     onTimeUpdate(this, e);
   });
 
-  this.on('pause', (e) => {
+  this.on('pause', () => {
     this.controlBar.liveButton.removeClass('onair');
   });
 
   this.ready(() => {
-    onPlayerReady(this, videojs.mergeOptions(defaults, options));
+    onPlayerReady(this, videojs.mergeOptions(DEFAULT_DVR_OPTIONS, options));
   });
 };
 
-/**
- * Button to seek forward to the current time.
- *
- * @extends Button
- */
-class LiveButton extends Button {
-
-  /**
-   * Creates an instance of this class.
-   *
-   * @param {Player} player
-   *        The Video.js `Player` object that this class should be attached to.
-   *
-   * @param {Object} [options]
-   *        An object containing options for the button.
-   */
-  constructor(player, options) {
-    super(player, options);
-    this.el().innerHTML = (
-      '<span class="liveCircle"></span><span class="liveText">LIVE</span>');
-    if (!player.paused()) {
-      this.addClass('onair');
-    }
-  }
-
-  /**
-   * Builds the default DOM `className`.
-   *
-   * @return {string}
-   *         The DOM `className` for this object.
-   */
-  buildCSSClass() {
-    return `vjs-live-button ${super.buildCSSClass()}`;
-  }
-
-  /**
-   * Handles a button click.
-   *
-   * @param {EventTarget~Event} [event]
-   *        The event that caused this function to be called.
-   *
-   * @listens tap
-   * @listens click
-   */
-  handleClick(event) {
-    const currentTime = this.player_.seekable().end(0);
-
-    this.player_.currentTime(currentTime);
-    this.player_.play();
-  }
-}
-
 Component.registerComponent('LiveButton', LiveButton);
 
-// Register the plugin with video.js.
-registerPlugin('dvr', dvr);
-
-// Include the version number.
-dvr.VERSION = VERSION;
+videojs.registerPlugin('dvr', dvr);
 
 export default dvr;
